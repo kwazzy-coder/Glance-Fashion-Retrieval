@@ -1,0 +1,11 @@
+# Data directory - downloaded images and ChromaDB are not committed
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+build/
+.ipynb_checkpoints/
+# Large model files
+*.pt
+*.pth

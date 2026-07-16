@@ -1,0 +1,21 @@
+# Multimodal Fashion & Context Retrieval System
+# Core dependencies
+
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.35.0
+open-clip-torch>=2.24.0
+
+# ── OpenAI CLIP for local TorchScript ViT-B-32.pt ─────────────────────
+# PyTorch 2.6+ changed torch.load(weights_only=True) default, breaking
+# TorchScript archives. The official clip.load() handles this correctly.
+ftfy>=6.1.0
+regex>=2023.0.0
+git+https://github.com/openai/CLIP.git@main
+
+chromadb>=0.4.0
+Pillow>=10.0.0
+requests>=2.31.0
+tqdm>=4.65.0
+numpy>=1.24.0
+datasets>=2.19.0
