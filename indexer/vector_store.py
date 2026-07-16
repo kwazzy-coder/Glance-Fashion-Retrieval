@@ -102,8 +102,11 @@ class VectorStore:
             return None
         try:
             sample = self.collection.get(limit=1, include=["embeddings"])
-            embeddings = sample.get("embeddings") or []
-            if embeddings and embeddings[0] is not None:
+            embeddings = sample.get("embeddings")
+            # Chroma may return a NumPy array here; do not use its truth value
+            # (which raises "ambiguous truth value" and previously hid the
+            # stored 768-dimension index from the compatibility check).
+            if embeddings is not None and len(embeddings) > 0 and embeddings[0] is not None:
                 return len(embeddings[0])
         except Exception:
             logger.debug("Could not read stored embedding dim.", exc_info=True)
