@@ -60,12 +60,18 @@ class IndexPipeline:
         image_dir: str,
         max_images: int = config.MAX_IMAGES,
         batch_size: int = config.BATCH_SIZE,
-    ) -> None:
-        """Index images in *image_dir* using batched captioning/embedding."""
+    ) -> Dict[str, int | float]:
+        """Index images in *image_dir* and return an auditable summary.
+
+        Returning counts makes notebooks and services able to report a clear
+        outcome without scraping log output.  The batched API remains the
+        scalability boundary: for millions of images, feed batches from an
+        object-store iterator and keep the same VectorStore interface.
+        """
         image_dir_path = Path(image_dir)
         if not image_dir_path.is_dir():
             logger.error("Image directory does not exist: %s", image_dir)
-            return
+            return {"processed": 0, "failed": 0, "total": 0, "seconds": 0.0}
 
         image_paths: List[Path] = sorted(
             p
@@ -75,7 +81,7 @@ class IndexPipeline:
 
         if not image_paths:
             logger.warning("No images found in '%s'.", image_dir)
-            return
+            return {"processed": 0, "failed": 0, "total": 0, "seconds": 0.0}
 
         image_paths = image_paths[:max_images]
         total = len(image_paths)
@@ -127,6 +133,12 @@ class IndexPipeline:
         )
         logger.info(summary)
         print(summary)
+        return {
+            "processed": succeeded,
+            "failed": failed,
+            "total": total,
+            "seconds": elapsed,
+        }
 
     def index_single(self, image_path: str) -> Dict:
         """Index one image and return its metadata."""

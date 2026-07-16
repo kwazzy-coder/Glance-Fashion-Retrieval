@@ -157,6 +157,17 @@ class QueryDecomposer:
 
     def _detect_environment(self, text: str) -> str | None:
         """Return the environment label with the most keyword hits."""
+        # Prefer a directly named specific scene ("office", "park", ...).
+        # Generic indoor/outdoor requests are handled explicitly below so
+        # "outdoor outfit" does not get incorrectly forced into "park".
+        for environment in self._environment_keywords:
+            if re.search(r"\b" + re.escape(environment) + r"\b", text):
+                return environment
+
+        for generic in config.ENVIRONMENT_COMPATIBILITY:
+            if re.search(r"\b" + re.escape(generic) + r"\b", text):
+                return generic
+
         best_env: str | None = None
         best_score = 0
         for env, keywords in self._environment_keywords.items():

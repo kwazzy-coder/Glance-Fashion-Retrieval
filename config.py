@@ -140,7 +140,8 @@ CLOTHING_TAXONOMY = {
         "oxford shoes", "heels", "pumps", "loafers", "blouse", "shirt",
     ],
     "casual": [
-        "t-shirt", "tee", "jeans", "denim", "hoodie", "sweatshirt",
+        "t-shirt", "tee", "jeans", "denim", "pants", "cargo pants",
+        "chinos", "khakis", "hoodie", "sweatshirt",
         "sneakers", "shorts", "tank top", "polo", "cardigan", "sweater",
         "pullover", "leggings", "joggers", "sweatpants", "flip-flops",
         "sandals", "cap", "baseball cap", "beanie", "casual dress",
@@ -170,6 +171,16 @@ ITEM_TO_CATEGORY = {}
 for category, items in CLOTHING_TAXONOMY.items():
     for item in items:
         ITEM_TO_CATEGORY[item] = category
+
+# Equivalent garment terms keep user phrasing aligned with the more
+# fashion-specific wording that zero-shot captions may emit.
+GARMENT_EQUIVALENTS = {
+    "pants": {"pants", "trousers", "slacks", "dress pants", "chinos", "khakis", "cargo pants"},
+    "shirt": {"shirt", "dress shirt", "button-down", "button-up"},
+    "t-shirt": {"t-shirt", "tee"},
+    "coat": {"coat", "overcoat", "trench coat", "peacoat", "raincoat"},
+    "jacket": {"jacket", "bomber jacket", "leather jacket", "denim jacket", "puffer jacket"},
+}
 
 # Color vocabulary with aliases
 COLOR_VOCABULARY = {
@@ -208,6 +219,14 @@ ENVIRONMENT_KEYWORDS = {
                      "ballroom", "theater", "opera", "red carpet", "stage"],
     "gym": ["gym", "fitness", "workout", "exercise", "treadmill", "weights",
             "yoga studio", "sports", "athletic", "training"],
+}
+
+# Generic scene intents are query-side constraints.  Indexed images retain
+# their more informative scene labels (park, office, urban, ...), while the
+# re-ranker maps those labels back to indoor/outdoor when needed.
+ENVIRONMENT_COMPATIBILITY = {
+    "indoor": {"office", "home", "formal_venue", "gym"},
+    "outdoor": {"urban", "park", "beach"},
 }
 
 # Style inference keywords
