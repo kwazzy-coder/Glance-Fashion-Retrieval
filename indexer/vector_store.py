@@ -10,7 +10,10 @@ only supports scalar metadata values (str, int, float, bool).
 import logging
 from typing import Any, Dict, List, Optional
 
-import chromadb
+try:
+    import chromadb  # type: ignore
+except ImportError:  # pragma: no cover - handled at runtime
+    chromadb = None
 
 import config
 
@@ -64,6 +67,11 @@ class VectorStore:
             collection was built with a different model (e.g. 768 vs 512),
             it is cleared automatically.
         """
+        if chromadb is None:
+            raise ImportError(
+                "chromadb is required for indexing. Install it with 'pip install chromadb'."
+            )
+
         self.persist_dir = persist_dir
         self.collection_name = collection_name
         self.embedding_dim = embedding_dim or config.EMBEDDING_DIM

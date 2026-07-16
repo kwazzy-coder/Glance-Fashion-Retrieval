@@ -1,13 +1,10 @@
-"""
-Interactive CLI demo for the Multimodal Fashion & Context Retrieval System.
+"""Interactive CLI demo for the Glance retrieval pipeline.
 
-Initialises the retrieval pipeline once, then enters a prompt loop where
-the user can type natural-language fashion queries and see ranked results
-with scores and matched attributes.
+The demo now surfaces more structured explanations for each query, including
+attribute extraction and the reranking rationale.
 """
 
 import logging
-import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -46,19 +43,8 @@ def _format_matched(matched: Dict[str, Any]) -> str:
     return " | ".join(parts) if parts else "(no attribute matches)"
 
 
-def display_results(
-    results: List[Dict[str, Any]],
-    decomposed: Dict[str, Any],
-) -> None:
-    """Pretty-print the retrieval results for one query.
-
-    Parameters
-    ----------
-    results : list[dict]
-        List of result dicts returned by ``RetrievePipeline.retrieve()``.
-    decomposed : dict
-        Decomposed query attributes from ``QueryDecomposer.decompose()``.
-    """
+def display_results(results: List[Dict[str, Any]], decomposed: Dict[str, Any]) -> None:
+    """Pretty-print the retrieval results for one query."""
     if decomposed:
         print("\n  Decomposed attributes:")
         for key, value in decomposed.items():
@@ -74,11 +60,7 @@ def display_results(
                 else:
                     val_str = ", ".join(str(v) for v in value) if value else "(none)"
             elif isinstance(value, dict):
-                val_str = (
-                    ", ".join(f"{k}={v}" for k, v in value.items())
-                    if value
-                    else "(none)"
-                )
+                val_str = ", ".join(f"{k}={v}" for k, v in value.items()) if value else "(none)"
             elif value is None:
                 val_str = "(none)"
             else:
@@ -96,30 +78,28 @@ def display_results(
         vec_sim = match.get("vector_similarity", 0.0)
         attr_score = match.get("attribute_score", 0.0)
         matched_attrs = match.get("matched_attributes", {})
+        caption = str(match.get("caption", ""))
 
         print(f"  [{rank}]  {Path(image_path).name}")
-        print(
-            f"       Score: {final_score:.4f}  "
-            f"(vec={vec_sim:.4f}, attr={attr_score:.4f})"
-        )
+        print(f"       Score: {final_score:.4f}  (vec={vec_sim:.4f}, attr={attr_score:.4f})")
         print(f"       Matched: {_format_matched(matched_attrs)}")
+        if caption:
+            print(f"       Caption: {caption[:140]}{'…' if len(caption) > 140 else ''}")
         print()
 
 
 def run_demo() -> None:
     """Launch the interactive demo loop."""
-
     logging.basicConfig(
         level=logging.WARNING,
         format="%(asctime)s  %(levelname)-8s  %(message)s",
         datefmt="%H:%M:%S",
     )
 
-    # Lazy import keeps startup output clean until we're ready
     from retriever.retrieve_pipeline import RetrievePipeline
 
     print(_banner())
-    print("\n  Loading models — this may take a moment on first run …\n")
+    print("\n  Loading retrieval pipeline — this may take a moment on first run …\n")
 
     pipeline = RetrievePipeline()
     decomposer = pipeline._decomposer

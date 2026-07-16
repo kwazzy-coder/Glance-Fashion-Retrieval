@@ -13,9 +13,13 @@ from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
-import open_clip
 import torch
 from PIL import Image
+
+try:
+    import open_clip  # type: ignore
+except ImportError:  # pragma: no cover - handled at runtime
+    open_clip = None
 
 import config
 
@@ -49,6 +53,10 @@ class EmbeddingGenerator:
             )
             self._load_openai_clip(str(pretrained))
         elif model_name.startswith("hf-hub:"):
+            if open_clip is None:
+                raise ImportError(
+                    "open_clip is required for hub-based models. Install the package with 'pip install open-clip-torch'."
+                )
             logger.info(
                 "Loading open_clip model '%s' on %s…",
                 model_name,
@@ -62,6 +70,10 @@ class EmbeddingGenerator:
             self.model.eval()
             logger.info("open_clip model loaded from Hub.")
         else:
+            if open_clip is None:
+                raise ImportError(
+                    "open_clip is required for this pipeline. Install the package with 'pip install open-clip-torch'."
+                )
             logger.info(
                 "Loading open_clip model '%s' (pretrained=%s) on %s…",
                 model_name,
