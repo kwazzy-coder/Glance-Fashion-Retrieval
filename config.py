@@ -110,7 +110,7 @@ ATTRIBUTE_MATCH_WEIGHT = 0.35    # Weight for attribute match score
 # ──────────────────────────────────────────────
 CHROMA_COLLECTION_NAME = "fashion_images"
 # Bump when required metadata fields change; stale records are rebuilt safely.
-INDEX_SCHEMA_VERSION = 2
+INDEX_SCHEMA_VERSION = 3
 
 # ──────────────────────────────────────────────
 # Device Configuration

@@ -1,9 +1,9 @@
-"""Region-aware fashion evidence extracted from Fashionpedia annotations.
+"""Visual upper/lower garment colour evidence for attribute-aware retrieval.
 
-The image encoder remains CLIP.  This module supplies independent visual
-metadata for reranking: garment regions and their dominant colours.  When the
-Fashionpedia annotation file is unavailable, it returns no evidence instead
-of fabricating a low-confidence caption-based attribute.
+Fashionpedia boxes are used when their filenames match.  Every other image
+falls back to a pretrained person detector, so colour-to-garment reasoning is
+not silently disabled for a mixed or streamed dataset.  CLIP remains the
+retrieval encoder; this module only produces transparent reranking metadata.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import torch
 from PIL import Image
 
 import config
@@ -26,15 +27,17 @@ _COLOR_RGB = {
 
 
 class RegionAttributeExtractor:
-    """Provides annotation-grounded top/bottom garment colour evidence."""
+    """Extract independently observed upper/lower garment colours."""
 
-    def __init__(self, annotation_path: Path | None = None) -> None:
+    def __init__(self, annotation_path: Path | None = None, device: str = config.DEVICE) -> None:
+        self.device = device
         self._by_filename: dict[str, list[dict[str, Any]]] = {}
+        self._detector = None
         path = annotation_path or (config.DATA_DIR / "annotations_val2020.json")
         if path.is_file():
-            self._load(path)
+            self._load_annotations(path)
 
-    def _load(self, path: Path) -> None:
+    def _load_annotations(self, path: Path) -> None:
         data = json.loads(path.read_text(encoding="utf-8"))
         filename_by_id = {image["id"]: image["file_name"] for image in data["images"]}
         categories = {category["id"]: category for category in data["categories"]}
@@ -47,40 +50,94 @@ class RegionAttributeExtractor:
         self._by_filename = dict(grouped)
 
     def extract(self, image: Image.Image, image_filename: str) -> dict[str, Any]:
-        """Return high-confidence region evidence, or explicit empty fields."""
+        """Return region colours from annotations or detected person geometry."""
+        evidence = self._empty_evidence()
         annotations = self._by_filename.get(image_filename, [])
-        evidence: dict[str, Any] = {
+        regions = self._annotation_regions(annotations)
+        if regions:
+            self._populate(evidence, image, regions, confidence_multiplier=1.0)
+            evidence["region_source"] = "fashionpedia_annotation"
+            return evidence
+
+        person_box, detector_confidence, source = self._person_box(image)
+        regions = self._split_person_box(person_box)
+        self._populate(evidence, image, regions, confidence_multiplier=detector_confidence)
+        evidence["region_source"] = source
+        return evidence
+
+    @staticmethod
+    def _empty_evidence() -> dict[str, Any]:
+        return {
             "top_color": "unknown", "bottom_color": "unknown",
             "top_color_confidence": 0.0, "bottom_color_confidence": 0.0,
             "top_garments": [], "bottom_garments": [], "region_source": "none",
         }
-        if not annotations:
-            return evidence
 
+    def _annotation_regions(self, annotations: list[dict[str, Any]]) -> dict[str, list[tuple[tuple[float, float, float, float], str]]]:
         regions: dict[str, list[tuple[tuple[float, float, float, float], str]]] = defaultdict(list)
         for annotation in annotations:
             category = annotation["category"]
-            supercategory = category.get("supercategory", "")
             label = self._canonical_label(category.get("name", ""))
-            if supercategory == "upperbody":
+            if category.get("supercategory") == "upperbody":
                 regions["top"].append((tuple(annotation["bbox"]), label))
-            elif supercategory == "lowerbody":
+            elif category.get("supercategory") == "lowerbody":
                 regions["bottom"].append((tuple(annotation["bbox"]), label))
+        return regions
 
-        for region, key in (("top", "top"), ("bottom", "bottom")):
+    def _person_box(self, image: Image.Image) -> tuple[tuple[float, float, float, float], float, str]:
+        """Return the strongest detected person box, with a safe fallback."""
+        try:
+            if self._detector is None:
+                from torchvision.models.detection import (
+                    FasterRCNN_MobileNet_V3_Large_320_FPN_Weights,
+                    fasterrcnn_mobilenet_v3_large_320_fpn,
+                )
+                self._detector = fasterrcnn_mobilenet_v3_large_320_fpn(
+                    weights=FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
+                ).to(self.device).eval()
+            pixels = torch.from_numpy(np.asarray(image.convert("RGB"))).permute(2, 0, 1).float().div(255).to(self.device)
+            with torch.no_grad():
+                output = self._detector([pixels])[0]
+            candidates = [
+                (box.detach().cpu().tolist(), float(score))
+                for box, label, score in zip(output["boxes"], output["labels"], output["scores"])
+                if int(label) == 1 and float(score) >= 0.55
+            ]
+            if candidates:
+                box, confidence = max(candidates, key=lambda item: (item[0][2] - item[0][0]) * (item[0][3] - item[0][1]))
+                left, top, right, bottom = box
+                return (left, top, right - left, bottom - top), confidence, "person_detector"
+        except Exception:
+            # Torchvision weights are optional in restricted/offline runtimes.
+            pass
+
+        # The fallback is intentionally down-weighted; it is better than
+        # leaving all records without evidence, but never overrides a clear
+        # annotation or detected person box.
+        return (
+            image.width * 0.20, image.height * 0.08,
+            image.width * 0.60, image.height * 0.87,
+        ), 0.42, "center_body_fallback"
+
+    @staticmethod
+    def _split_person_box(box: tuple[float, float, float, float]) -> dict[str, list[tuple[tuple[float, float, float, float], str]]]:
+        x, y, width, height = box
+        # Skip head/feet; these bands are deliberately conservative garment ROIs.
+        return {
+            "top": [((x + 0.08 * width, y + 0.20 * height, 0.84 * width, 0.35 * height), "top")],
+            "bottom": [((x + 0.12 * width, y + 0.55 * height, 0.76 * width, 0.35 * height), "pants")],
+        }
+
+    def _populate(self, evidence: dict[str, Any], image: Image.Image, regions: dict[str, list[tuple[tuple[float, float, float, float], str]]], confidence_multiplier: float) -> None:
+        for region in ("top", "bottom"):
             entries = regions.get(region, [])
-            if not entries:
-                continue
-            colors = [self._dominant_color(image, bbox) for bbox, _ in entries]
-            colors = [item for item in colors if item is not None]
-            if colors:
-                color, confidence = max(colors, key=lambda value: value[1])
-                evidence[f"{key}_color"] = color
-                evidence[f"{key}_color_confidence"] = round(confidence, 4)
-            evidence[f"{key}_garments"] = list(dict.fromkeys(label for _, label in entries))
-
-        evidence["region_source"] = "fashionpedia_annotation"
-        return evidence
+            colours = [self._dominant_color(image, bbox) for bbox, _ in entries]
+            colours = [colour for colour in colours if colour is not None]
+            if colours:
+                colour, confidence = max(colours, key=lambda item: item[1])
+                evidence[f"{region}_color"] = colour
+                evidence[f"{region}_color_confidence"] = round(confidence * confidence_multiplier, 4)
+            evidence[f"{region}_garments"] = list(dict.fromkeys(label for _, label in entries))
 
     @staticmethod
     def _canonical_label(label: str) -> str:
@@ -106,6 +163,4 @@ class RegionAttributeExtractor:
         palette = np.asarray([_COLOR_RGB[label] for label in labels], dtype=np.float32)
         distances = np.linalg.norm(palette - median, axis=1)
         index = int(np.argmin(distances))
-        # Confidence is intentionally conservative: colour is an auxiliary
-        # visual signal, not an asserted fact from a synthetic caption.
         return labels[index], max(0.0, min(1.0, 1.0 - float(distances[index]) / 220.0))
