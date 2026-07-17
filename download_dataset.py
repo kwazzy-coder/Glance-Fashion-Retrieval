@@ -10,6 +10,7 @@ Strategy (fast — avoids the 15 GB train zip):
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import random
 import zipfile
@@ -130,8 +131,12 @@ def _download_file(url: str, dest: Path, desc: str) -> bool:
         return False
 
 
-def download_via_val_zip(max_images: int, image_dir: Path) -> int:
-    """Fallback: download Fashionpedia val/test zip and sample images."""
+def download_via_val_zip(
+    max_images: int,
+    image_dir: Path,
+    allowed_filenames: set[str] | None = None,
+) -> int:
+    """Download Fashionpedia val/test images, optionally annotation-aligned."""
     zip_path = config.DATA_DIR / "val_test2020.zip"
     if not _download_file(VAL_ZIP_URL, zip_path, "val_test2020.zip"):
         return _existing_image_count(image_dir)
@@ -149,6 +154,7 @@ def download_via_val_zip(max_images: int, image_dir: Path) -> int:
                 m
                 for m in zf.namelist()
                 if Path(m).suffix.lower() in IMAGE_EXTENSIONS
+                and (allowed_filenames is None or Path(m).name in allowed_filenames)
             ]
             random.Random(42).shuffle(members)
             for member in tqdm(members, desc="Extracting", unit="img"):
@@ -169,7 +175,7 @@ def download_via_val_zip(max_images: int, image_dir: Path) -> int:
 
 
 def download_dataset(max_images: int = config.MAX_IMAGES) -> None:
-    """Download real Fashionpedia images (stream first, zip fallback)."""
+    """Build an annotation-aligned Fashionpedia validation image corpus."""
     image_dir: Path = config.IMAGE_DIR
     annotation_path = config.DATA_DIR / "annotations_val2020.json"
 
@@ -183,6 +189,11 @@ def download_dataset(max_images: int = config.MAX_IMAGES) -> None:
             "Fashionpedia validation annotations",
         )
 
+    if not annotation_path.is_file():
+        raise RuntimeError("Fashionpedia annotations are required for aligned download.")
+
+    annotation_data = json.loads(annotation_path.read_text(encoding="utf-8"))
+    allowed_filenames = {image["file_name"] for image in annotation_data["images"]}
     existing = _existing_image_count(image_dir)
     if existing >= max_images:
         print(f"\nOK  {existing} images already present in {image_dir}")
@@ -193,10 +204,9 @@ def download_dataset(max_images: int = config.MAX_IMAGES) -> None:
     print(f"Target: {max_images} images → {image_dir}")
     print(f"Already have: {existing}\n")
 
-    count = download_via_hf_streaming(max_images, image_dir)
-    if count < min(500, max_images):
-        print("\nWARNING: HF stream under-delivered; trying val/test zip fallback…")
-        count = download_via_val_zip(max_images, image_dir)
+    # The official archive is used rather than a generic streaming split:
+    # its filenames are guaranteed to exist in annotations_val2020.json.
+    count = download_via_val_zip(max_images, image_dir, allowed_filenames)
 
     print()
     print("=" * 50)

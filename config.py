@@ -15,7 +15,10 @@ from pathlib import Path
 # ──────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
-IMAGE_DIR = DATA_DIR / "images"
+# Keep the assignment corpus separate from any manually uploaded images.
+# Every file in this directory is selected from Fashionpedia validation
+# annotations, enabling grounded garment-region metadata and fair evaluation.
+IMAGE_DIR = DATA_DIR / "fashionpedia_val_images"
 CHROMA_PERSIST_DIR = DATA_DIR / "chromadb"
 ANNOTATIONS_DIR = DATA_DIR / "annotations"
 
@@ -110,7 +113,7 @@ ATTRIBUTE_MATCH_WEIGHT = 0.35    # Weight for attribute match score
 # ──────────────────────────────────────────────
 CHROMA_COLLECTION_NAME = "fashion_images"
 # Bump when required metadata fields change; stale records are rebuilt safely.
-INDEX_SCHEMA_VERSION = 3
+INDEX_SCHEMA_VERSION = 4
 
 # ──────────────────────────────────────────────
 # Device Configuration
