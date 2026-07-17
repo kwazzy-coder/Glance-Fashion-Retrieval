@@ -187,6 +187,7 @@ class IndexPipeline:
         for path, attrs in zip(ok_paths, attrs_list):
             store_meta = {k: v for k, v in attrs.items() if k != "raw_caption"}
             store_meta["image_path"] = str(path)
+            store_meta["index_schema_version"] = config.INDEX_SCHEMA_VERSION
             metadatas.append(store_meta)
 
         self.vector_store.add_images_batch(
@@ -213,6 +214,7 @@ class IndexPipeline:
 
         store_meta = {k: v for k, v in attributes.items() if k != "raw_caption"}
         store_meta["image_path"] = str(path)
+        store_meta["index_schema_version"] = config.INDEX_SCHEMA_VERSION
         self.vector_store.add_image(
             image_id=image_id,
             embedding=embedding.tolist(),

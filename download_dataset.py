@@ -171,6 +171,18 @@ def download_via_val_zip(max_images: int, image_dir: Path) -> int:
 def download_dataset(max_images: int = config.MAX_IMAGES) -> None:
     """Download real Fashionpedia images (stream first, zip fallback)."""
     image_dir: Path = config.IMAGE_DIR
+    annotation_path = config.DATA_DIR / "annotations_val2020.json"
+
+    # Region-aware reranking uses Fashionpedia's garment boxes to obtain
+    # independent upper/lower-body colour evidence.  Download this compact
+    # annotation file even when the image subset was already cached.
+    if not annotation_path.is_file() or annotation_path.stat().st_size < 1_000_000:
+        _download_file(
+            config.FASHIONPEDIA_URLS["val_annotations"],
+            annotation_path,
+            "Fashionpedia validation annotations",
+        )
+
     existing = _existing_image_count(image_dir)
     if existing >= max_images:
         print(f"\nOK  {existing} images already present in {image_dir}")
