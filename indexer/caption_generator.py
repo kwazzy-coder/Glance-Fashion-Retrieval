@@ -212,25 +212,36 @@ class CaptionGenerator:
             parts.append(f"in a {env_hint}")
         return " ".join(parts)
 
-    def generate_caption(self, image: Image.Image) -> str:
-        """Return a zero-shot fashion+context caption for *image*."""
+    def _confidence(self, scores: np.ndarray) -> float:
+        """Return a conservative confidence for zero-shot caption evidence."""
+        category_best: dict[str, float] = {}
+        for score, (_, category, _) in zip(scores, self._prompt_bank):
+            category_best[category] = max(category_best.get(category, -1.0), float(score))
+        selected = [category_best.get(name, 0.0) for name in ("garment", "color", "environment", "style")]
+        return round(float(np.clip((np.mean(selected) + 0.05) / 0.45, 0.0, 1.0)), 4)
+
+    def generate_caption_record(self, image: Image.Image) -> dict:
+        """Return a caption plus zero-shot confidence for reranking."""
         scores = self._score_image(image)
         attrs = self._select(scores)
-        caption = self._attrs_to_caption(attrs)
-        logger.debug("Zero-shot caption: %s", caption)
-        return caption
+        return {"caption": self._attrs_to_caption(attrs), "caption_confidence": self._confidence(scores)}
 
-    def generate_captions_batch(
-        self,
-        images: List[Image.Image],
-        batch_size: int = config.BATCH_SIZE,
-    ) -> List[str]:
-        """Caption a list of images (batched image encoding)."""
-        captions: List[str] = []
+    def generate_caption(self, image: Image.Image) -> str:
+        """Return a zero-shot fashion+context caption for *image*."""
+        return self.generate_caption_record(image)["caption"]
+
+    def generate_caption_records_batch(self, images: List[Image.Image], batch_size: int = config.BATCH_SIZE) -> List[dict]:
+        """Create batched captions while preserving confidence evidence."""
+        records: List[dict] = []
         for start in range(0, len(images), batch_size):
             batch = images[start : start + batch_size]
             img_feats = self.encoder.encode_images_batch(batch, batch_size=len(batch))
             for feat in img_feats:
                 scores = self._text_feats @ feat  # type: ignore[operator]
-                captions.append(self._attrs_to_caption(self._select(scores)))
-        return captions
+                attrs = self._select(scores)
+                records.append({"caption": self._attrs_to_caption(attrs), "caption_confidence": self._confidence(scores)})
+        return records
+
+    def generate_captions_batch(self, images: List[Image.Image], batch_size: int = config.BATCH_SIZE) -> List[str]:
+        """Backward-compatible caption-only batch API."""
+        return [record["caption"] for record in self.generate_caption_records_batch(images, batch_size)]

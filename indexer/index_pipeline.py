@@ -22,6 +22,7 @@ import config
 from indexer.attribute_extractor import AttributeExtractor
 from indexer.caption_generator import CaptionGenerator
 from indexer.embedding_generator import EmbeddingGenerator
+from indexer.region_attribute_extractor import RegionAttributeExtractor
 from indexer.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ class IndexPipeline:
             embedding_generator=self.embedding_generator,
         )
         self.attribute_extractor = AttributeExtractor()
+        self.region_attribute_extractor = RegionAttributeExtractor()
 
         # Probe live embedding width (ViT-B/32 → 512; other encoders may differ).
         probe = self.embedding_generator.encode_text("fashion probe")
@@ -160,10 +162,12 @@ class IndexPipeline:
         if not images:
             return 0
 
-        captions = self.caption_generator.generate_captions_batch(images)
-        attrs_list = [
-            self.attribute_extractor.extract_attributes(cap) for cap in captions
-        ]
+        caption_records = self.caption_generator.generate_caption_records_batch(images)
+        captions = [record["caption"] for record in caption_records]
+        attrs_list = [self.attribute_extractor.extract_attributes(caption) for caption in captions]
+        for path, image, attrs, record in zip(ok_paths, images, attrs_list, caption_records):
+            attrs.update(self.region_attribute_extractor.extract(image, path.name))
+            attrs["caption_confidence"] = record["caption_confidence"]
 
         img_embs = self.embedding_generator.encode_images_batch(images)
         embeddings = []
@@ -198,8 +202,11 @@ class IndexPipeline:
         image = Image.open(path).convert("RGB")
         image_id = path.name
 
-        caption = self.caption_generator.generate_caption(image)
+        caption_record = self.caption_generator.generate_caption_record(image)
+        caption = caption_record["caption"]
         attributes = self.attribute_extractor.extract_attributes(caption)
+        attributes.update(self.region_attribute_extractor.extract(image, path.name))
+        attributes["caption_confidence"] = caption_record["caption_confidence"]
         embedding = self.embedding_generator.generate_fused_embedding(
             image, caption
         )

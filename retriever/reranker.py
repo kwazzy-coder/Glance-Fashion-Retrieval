@@ -107,32 +107,45 @@ class AttributeReranker:
         if clothing_items:
             pair_scores: list[float] = []
             pair_hits: list[str] = []
+            pair_conflicts: list[str] = []
+            caption_confidence = max(0.15, min(1.0, float(metadata.get("caption_confidence", 0.5))))
             for item in clothing_items:
                 if item.get("color"):
-                    pair_score = self._score_color_item_pair(
-                        caption,
-                        item["color"],
-                        item["type"],
-                        metadata,
+                    caption_pair_score = self._score_color_item_pair(
+                        caption, item["color"], item["type"], metadata
                     )
+                    region_score, has_region_evidence, conflict = self._score_region_pair(
+                        metadata, item["color"], item["type"]
+                    )
+                    # Annotation-grounded region evidence is preferred. A
+                    # contradictory top/bottom colour receives a strong
+                    # penalty instead of being rescued by caption co-occurrence.
+                    if has_region_evidence:
+                        pair_score = 0.80 * region_score + 0.20 * caption_pair_score
+                    else:
+                        pair_score = 0.50 * caption_confidence * caption_pair_score
+                    if conflict:
+                        pair_score *= 0.10
+                        pair_conflicts.append(f"{item['color']} {item['type']}")
                     pair_scores.append(pair_score)
                     if pair_score >= 0.5:
                         pair_hits.append(f"{item['color']} {item['type']}")
             if pair_scores:
                 comp_score = sum(pair_scores) / len(pair_scores)
-                weighted_score += 0.40 * comp_score
-                total_weight += 0.40
+                weighted_score += 0.55 * comp_score
+                total_weight += 0.55
                 matched["compositional"] = {
                     "query": [f"{item['color']} {item['type']}" for item in clothing_items if item.get("color")],
                     "hits": pair_hits,
+                    "conflicts": pair_conflicts,
                     "score": round(comp_score, 4),
                 }
 
         if query_colors:
             color_hits = [color for color in query_colors if color in cand_colors]
             color_score = len(color_hits) / len(query_colors) if query_colors else 0.0
-            weighted_score += 0.20 * color_score
-            total_weight += 0.20
+            weighted_score += 0.13 * color_score
+            total_weight += 0.13
             matched["colors"] = {
                 "query": query_colors,
                 "candidate": sorted(cand_colors),
@@ -151,8 +164,8 @@ class AttributeReranker:
                 ):
                     type_hits.append(item_type)
             type_score = len(type_hits) / len(query_types) if query_types else 0.0
-            weighted_score += 0.25 * type_score
-            total_weight += 0.25
+            weighted_score += 0.18 * type_score
+            total_weight += 0.18
             matched["clothing_types"] = {
                 "query": query_types,
                 "candidate": sorted(cand_types),
@@ -163,8 +176,8 @@ class AttributeReranker:
         if query_accessories:
             accessory_hits = [accessory for accessory in query_accessories if accessory in cand_accessories]
             accessory_score = len(accessory_hits) / len(query_accessories) if query_accessories else 0.0
-            weighted_score += 0.08 * accessory_score
-            total_weight += 0.08
+            weighted_score += 0.05 * accessory_score
+            total_weight += 0.05
             matched["accessories"] = {
                 "query": query_accessories,
                 "candidate": sorted(cand_accessories),
@@ -195,8 +208,8 @@ class AttributeReranker:
                 style_keywords = config.STYLE_KEYWORDS.get(query_style, [])
                 if any(re.search(r"\b" + re.escape(keyword) + r"\b", caption) for keyword in style_keywords):
                     style_score = 0.6
-            weighted_score += 0.02 * style_score
-            total_weight += 0.02
+            weighted_score += 0.04 * style_score
+            total_weight += 0.04
             matched["style"] = {
                 "query": query_style,
                 "candidate": cand_style,
@@ -206,6 +219,24 @@ class AttributeReranker:
         if total_weight <= 0:
             return 1.0, matched
         return round(weighted_score / total_weight, 6), matched
+
+    def _score_region_pair(self, metadata: dict[str, Any], color: str, item_type: str) -> tuple[float, bool, bool]:
+        """Score an annotation-grounded top/bottom colour constraint.
+
+        Returns ``(score, has_evidence, conflict)``.  A known, different
+        colour in the requested garment region is an explicit conflict.
+        """
+        region = "bottom" if item_type.lower() in {"pants", "trousers", "slacks", "jeans", "skirt", "shorts", "leggings"} else "top"
+        observed = str(metadata.get(f"{region}_color", "unknown")).lower()
+        try:
+            confidence = max(0.0, min(1.0, float(metadata.get(f"{region}_color_confidence", 0.0))))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        if observed in {"", "unknown"} or confidence < 0.35:
+            return 0.0, False, False
+        if observed == color:
+            return confidence, True, False
+        return 0.0, True, True
 
     def _score_color_item_pair(
         self,

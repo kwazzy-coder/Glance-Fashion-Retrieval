@@ -135,12 +135,13 @@ FASHIONPEDIA_URLS = {
 CLOTHING_TAXONOMY = {
     "formal": [
         "blazer", "suit", "tuxedo", "dress shirt", "button-down", "button-up",
-        "dress pants", "slacks", "trousers", "pencil skirt", "formal dress",
+        "dress pants", "slacks", "trousers", "pants", "pencil skirt", "skirt",
+        "formal dress", "dress",
         "gown", "waistcoat", "vest", "necktie", "tie", "bow tie", "cufflinks",
         "oxford shoes", "heels", "pumps", "loafers", "blouse", "shirt",
     ],
     "casual": [
-        "t-shirt", "tee", "jeans", "denim", "pants", "cargo pants",
+        "t-shirt", "tee", "top", "jeans", "denim", "cargo pants",
         "chinos", "khakis", "hoodie", "sweatshirt",
         "sneakers", "shorts", "tank top", "polo", "cardigan", "sweater",
         "pullover", "leggings", "joggers", "sweatpants", "flip-flops",
@@ -180,6 +181,11 @@ GARMENT_EQUIVALENTS = {
     "t-shirt": {"t-shirt", "tee"},
     "coat": {"coat", "overcoat", "trench coat", "peacoat", "raincoat"},
     "jacket": {"jacket", "bomber jacket", "leather jacket", "denim jacket", "puffer jacket"},
+    "dress": {"dress", "formal dress", "casual dress", "sundress", "gown"},
+    "top": {"top", "t-shirt", "tee", "tank top", "blouse", "shirt"},
+    "skirt": {"skirt", "pencil skirt"},
+    "blazer": {"blazer", "suit jacket", "jacket"},
+    "jeans": {"jeans", "denim", "pants"},
 }
 
 # Color vocabulary with aliases
