@@ -189,21 +189,6 @@ mentions a red tie, rather than just visually similar red objects.
 
 ---
 
-## Evaluation Results
-
-| Query | Top-1 Score | Retrieval Time |
-|---|---|---|
-| A person in a bright yellow raincoat | — | — |
-| Professional business attire inside a modern office | — | — |
-| Someone wearing a blue shirt sitting on a park bench | — | — |
-| Casual weekend outfit for a city walk | — | — |
-| A red tie and a white shirt in a formal setting | — | — |
-
-> Run `python -m evaluation.evaluate` to populate these with your own
-> results.
-
----
-
 ## Scalability Considerations
 
 | Scale | Recommended Backend | Notes |
